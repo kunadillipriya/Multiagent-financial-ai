@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Agent Financial Research System</title>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #161d2e; --panel2: #1d2740; --border: #2a3454;
+    --text: #e8ecf5; --muted: #8b93ab; --accent: #4f7df3; --accent2: #6ee7b7;
+    --high: #f87171; --medium: #fbbf24; --low: #60a5fa;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+         background: var(--bg); color: var(--text); display:flex; height:100vh; overflow:hidden; }
+  #sidebar { width: 220px; background: var(--panel); border-right:1px solid var(--border);
+             display:flex; flex-direction:column; padding:12px; flex-shrink:0; }
+  #sidebar h1 { font-size:15px; margin:4px 4px 16px; line-height:1.3; }
+  .tab-btn { background:none; border:none; color: var(--muted); text-align:left; padding:10px 12px;
+             border-radius:8px; cursor:pointer; font-size:14px; margin-bottom:4px; }
+  .tab-btn.active { background: var(--accent); color:white; }
+  .tab-btn:hover:not(.active) { background: var(--panel2); color: var(--text); }
+  #session-info { margin-top:auto; font-size:11px; color: var(--muted); padding:8px; }
+  #main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+  .view { display:none; flex-direction:column; height:100%; overflow:hidden; }
+  .view.active { display:flex; }
+  .view-header { padding:16px 24px; border-bottom:1px solid var(--border); }
+  .view-header h2 { margin:0 0 4px; font-size:18px; }
+  .view-header p { margin:0; color: var(--muted); font-size:13px; }
+  .view-body { flex:1; overflow-y:auto; padding:20px 24px; }
+  button.primary { background: var(--accent); color:white; border:none; padding:10px 16px;
+                    border-radius:8px; cursor:pointer; font-size:14px; }
+  button.primary:disabled { opacity:0.5; cursor:default; }
+  button.secondary { background: var(--panel2); color:var(--text); border:1px solid var(--border);
+                      padding:10px 16px; border-radius:8px; cursor:pointer; font-size:14px; }
+  .card { background: var(--panel2); border:1px solid var(--border); border-radius:10px;
+          padding:16px; margin-bottom:12px; }
+  .doc-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0;
+             border-bottom:1px solid var(--border); }
+  .doc-row:last-child { border-bottom:none; }
+  .badge { font-size:11px; padding:3px 8px; border-radius:20px; font-weight:600; }
+  .badge.ok { background:#1e3a2e; color: var(--accent2); }
+  .badge.rejected { background:#3a1e1e; color: var(--high); }
+  .badge.failed { background:#3a1e1e; color: var(--high); }
+  .badge.pending { background:#3a331e; color: var(--medium); }
+  .flag-item { border-left:4px solid var(--medium); padding:10px 14px; margin-bottom:10px;
+               background: var(--panel2); border-radius:0 8px 8px 0; }
+  .flag-item.high { border-color: var(--high); }
+  .flag-item.medium { border-color: var(--medium); }
+  .flag-item .flag-meta { font-size:11px; color: var(--muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); }
+  th { color: var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; }
+  #chat-log { flex:1; overflow-y:auto; padding:20px 24px; }
+  .msg { max-width:720px; margin-bottom:16px; }
+  .msg.user { margin-left:auto; text-align:right; }
+  .msg .bubble { display:inline-block; padding:12px 16px; border-radius:12px; text-align:left; white-space:pre-wrap; font-size:14px; line-height:1.5; }
+  .msg.user .bubble { background: var(--accent); color:white; }
+  .msg.assistant .bubble { background: var(--panel2); border:1px solid var(--border); }
+  #chat-input-row { display:flex; gap:8px; padding:16px 24px; border-top:1px solid var(--border); }
+  #chat-input-row input { flex:1; background: var(--panel2); border:1px solid var(--border); color: var(--text);
+                           padding:12px 14px; border-radius:8px; font-size:14px; }
+  .upload-zone { border:2px dashed var(--border); border-radius:10px; padding:24px; text-align:center;
+                 color: var(--muted); margin-bottom:16px; }
+  select, input[type=text] { background: var(--panel2); border:1px solid var(--border); color: var(--text);
+                              padding:8px 10px; border-radius:6px; font-size:13px; }
+  .muted { color: var(--muted); font-size:13px; }
+  .error-box { background:#3a1e1e; border:1px solid var(--high); color:#fca5a5; padding:12px 14px;
+               border-radius:8px; margin-bottom:12px; font-size:13px; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>📊 Financial Research System</h1>
+  <button class="tab-btn active" data-view="chat">💬 Ask Research Agent</button>
+  <button class="tab-btn" data-view="documents">📄 Documents</button>
+  <button class="tab-btn" data-view="redflags">🚩 Red Flags</button>
+  <button class="tab-btn" data-view="compare">📊 Compare Companies</button>
+  <button class="tab-btn" data-view="report">📝 Report Preview</button>
+  <div id="session-info">Setting up...</div>
+</div>
+
+<div id="main">
+
+  <div class="view active" id="view-chat">
+    <div class="view-header">
+      <h2>Ask the Research Agent</h2>
+      <p>Multi-part questions get split, retrieved, and answered step by step — every claim cites its source.</p>
+    </div>
+    <div id="chat-log"></div>
+    <div id="chat-input-row">
+      <input type="text" id="chat-input" placeholder="e.g. What was Aurora's revenue growth, and does Meridian have debt concerns?">
+      <button class="primary" id="chat-send">Ask</button>
+    </div>
+  </div>
+
+  <div class="view" id="view-documents">
+    <div class="view-header">
+      <h2>Documents</h2>
+      <p>Upload a financial document, or load the 3 ready-made sample companies.</p>
+    </div>
+    <div class="view-body">
+      <div id="upload-error"></div>
+      <div class="upload-zone">
+        <p style="margin:0 0 12px">Upload a .txt, .pdf, or .docx financial document (annual report, 10-K, earnings release, etc.)</p>
+        <input type="file" id="file-input" accept=".txt,.pdf,.docx">
+        <br><br>
+        <button class="primary" id="upload-btn">Upload Document</button>
+        <button class="secondary" id="load-seed-btn" style="margin-left:8px">Load 3 Sample Companies</button>
+      </div>
+      <div class="card">
+        <strong>Documents in this session</strong>
+        <div id="doc-list" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="view-redflags">
+    <div class="view-header">
+      <h2>Red Flags</h2>
+      <p>Automatically detected anomalies — rising debt, falling margins, weak liquidity, and auditor-language warnings.</p>
+    </div>
+    <div class="view-body" id="redflags-body"></div>
+  </div>
+
+  <div class="view" id="view-compare">
+    <div class="view-header">
+      <h2>Compare Companies</h2>
+      <p>Every company in this session, ranked side-by-side on each metric.</p>
+    </div>
+    <div class="view-body" id="compare-body"></div>
+  </div>
+
+  <div class="view" id="view-report">
+    <div class="view-header">
+      <h2>Report Preview</h2>
+      <p>Full 5-section analyst report, auto-compiled from every agent's output.
+        <a id="report-pdf-link" href="#" target="_blank" style="float:right">⬇ Download PDF</a></p>
+    </div>
+    <div class="view-body" id="report-body"></div>
+  </div>
+
+</div>
+
+<script>
+const API = "";
+let sessionId = null;
+
+async function api(path, options) {
+  const res = await fetch(API + path, options);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const err = new Error(data.detail?.message || data.detail || "Request failed"); err.data = data; throw err; }
+  return data;
+}
+
+async function init() {
+  const ws = await api("/workspaces", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({name:"Default Workspace"}) });
+  const sess = await api(`/workspaces/${ws.id}/sessions`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({name:"Default Session"}) });
+  sessionId = sess.id;
+  document.getElementById("session-info").textContent = `Session #${sessionId}`;
+  refreshDocuments();
+}
+
+// --- Tabs ---
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("view-" + btn.dataset.view).classList.add("active");
+    if (btn.dataset.view === "redflags") loadRedFlags();
+    if (btn.dataset.view === "compare") loadCompare();
+    if (btn.dataset.view === "report") loadReport();
+  });
+});
+
+// --- Chat ---
+const chatLog = document.getElementById("chat-log");
+function addMsg(role, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  div.innerHTML = `<div class="bubble"></div>`;
+  div.querySelector(".bubble").textContent = text;
+  chatLog.appendChild(div);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+document.getElementById("chat-send").addEventListener("click", sendChat);
+document.getElementById("chat-input").addEventListener("keydown", e => { if (e.key === "Enter") sendChat(); });
+
+async function sendChat() {
+  const input = document.getElementById("chat-input");
+  const q = input.value.trim();
+  if (!q) return;
+  addMsg("user", q);
+  input.value = "";
+  addMsg("assistant", "Thinking...");
+  try {
+    const result = await api(`/sessions/${sessionId}/ask`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({question:q}) });
+    chatLog.lastChild.remove();
+    addMsg("assistant", result.answer + `\n\n(${result.mode === "llm_reasoned" ? "Claude-reasoned answer" : "Offline extractive answer"}, ${result.citations.length} citation(s))`);
+  } catch (e) {
+    chatLog.lastChild.remove();
+    addMsg("assistant", "Error: " + e.message);
+  }
+}
+
+// --- Documents ---
+async function refreshDocuments() {
+  if (!sessionId) return;
+  const docs = await api(`/sessions/${sessionId}/documents`);
+  const list = document.getElementById("doc-list");
+  if (!docs.length) { list.innerHTML = '<p class="muted">No documents yet.</p>'; return; }
+  list.innerHTML = docs.map(d => {
+    let badgeClass = "pending";
+    if (d.status === "extracted" || d.status === "red_flags_scanned") badgeClass = "ok";
+    if (d.status === "rejected") badgeClass = "rejected";
+    if (d.status === "failed") badgeClass = "failed";
+    const reasonLine = d.status === "rejected" && d.rejection_reason
+      ? `<div class="muted" style="margin-top:4px;color:#fca5a5">${d.rejection_reason}</div>` : "";
+    return `<div class="doc-row">
+      <div>
+        <div><strong>${d.company_name || d.filename}</strong> <span class="muted">(${d.filename})</span></div>
+        ${reasonLine}
+      </div>
+      <span class="badge ${badgeClass}">${d.status}</span>
+    </div>`;
+  }).join("");
+}
+
+document.getElementById("upload-btn").addEventListener("click", async () => {
+  const fileInput = document.getElementById("file-input");
+  const errorBox = document.getElementById("upload-error");
+  errorBox.innerHTML = "";
+  if (!fileInput.files.length) { errorBox.innerHTML = '<div class="error-box">Choose a file first.</div>'; return; }
+  const formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+  try {
+    await api(`/sessions/${sessionId}/documents/upload`, { method: "POST", body: formData });
+    fileInput.value = "";
+    refreshDocuments();
+  } catch (e) {
+    const reason = e.data?.detail?.reason || e.message;
+    errorBox.innerHTML = `<div class="error-box"><strong>Document not processed.</strong><br>${reason}</div>`;
+    refreshDocuments();
+  }
+});
+
+document.getElementById("load-seed-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("load-seed-btn");
+  btn.disabled = true; btn.textContent = "Loading...";
+  try {
+    await api(`/sessions/${sessionId}/load-seed-documents`, { method: "POST" });
+    refreshDocuments();
+  } finally {
+    btn.disabled = false; btn.textContent = "Load 3 Sample Companies";
+  }
+});
+
+// --- Red Flags ---
+async function loadRedFlags() {
+  const body = document.getElementById("redflags-body");
+  body.innerHTML = '<p class="muted">Loading...</p>';
+  const flags = await api(`/sessions/${sessionId}/red-flags`);
+  if (!flags.length) { body.innerHTML = '<p class="muted">No red flags detected yet. Load or upload documents first.</p>'; return; }
+  const byCompany = {};
+  flags.forEach(f => { (byCompany[f.company_name] = byCompany[f.company_name] || []).push(f); });
+  body.innerHTML = Object.entries(byCompany).map(([company, items]) => `
+    <div class="card">
+      <strong>${company}</strong> <span class="muted">(${items.length} flag${items.length===1?'':'s'})</span>
+      <div style="margin-top:10px">
+        ${items.map(f => `<div class="flag-item ${f.severity}">
+            <div class="flag-meta">${f.severity} · ${f.flag_type.replace(/_/g,' ')}</div>
+            ${f.description}
+          </div>`).join("")}
+      </div>
+    </div>`).join("");
+}
+
+// --- Compare ---
+async function loadCompare() {
+  const body = document.getElementById("compare-body");
+  body.innerHTML = '<p class="muted">Loading...</p>';
+  const result = await api(`/sessions/${sessionId}/compare-all`);
+  const names = Object.keys(result.metrics);
+  if (!names.length) { body.innerHTML = '<p class="muted">No metrics yet. Load or upload documents first.</p>'; return; }
+  body.innerHTML = names.map(name => {
+    const m = result.metrics[name];
+    if (!m.rows.length) return "";
+    return `<div class="card">
+      <strong>${name.replace(/_/g,' ')}</strong> <span class="muted">leader: ${m.leader}</span>
+      <table style="margin-top:10px">
+        <tr><th>Rank</th><th>Company</th><th>Value</th><th>Period</th></tr>
+        ${m.rows.map(r => `<tr><td>#${r.rank}</td><td>${r.company_name}</td><td>${typeof r.value === 'number' ? r.value.toLocaleString(undefined,{maximumFractionDigits:2}) : r.value}</td><td>${r.period}</td></tr>`).join("")}
+      </table>
+    </div>`;
+  }).join("");
+}
+
+// --- Report (Milestone 4: full 5-section report) ---
+async function loadReport() {
+  const body = document.getElementById("report-body");
+  body.innerHTML = '<p class="muted">Loading...</p>';
+  document.getElementById("report-pdf-link").href = `/sessions/${sessionId}/report/pdf`;
+
+  const r = await api(`/sessions/${sessionId}/report/full`);
+
+  // 1. Executive Summary
+  let html = `<div class="card"><strong>1. Executive Summary</strong><p class="muted" style="margin-top:8px">${r.executive_summary.overview}</p>`;
+  html += r.executive_summary.per_company.map(c => `<p style="margin-top:10px"><strong>${c.company_name}:</strong> ${c.summary_text}</p>`).join("");
+  html += `</div>`;
+
+  // 2. Key Financials
+  html += `<div class="card"><strong>2. Key Financials</strong>`;
+  r.key_financials.tables.forEach(t => {
+    html += `<p style="margin-top:10px"><strong>${t.company_name}</strong></p>
+      <table style="margin-top:4px">
+        <tr><th>Metric</th><th>Latest</th><th>Prior</th></tr>
+        ${t.rows.map(row => `<tr><td>${row.metric}</td><td>${row.latest_value} (${row.latest_period})</td><td>${row.prior_value ?? '—'} ${row.prior_period ? '('+row.prior_period+')' : ''}</td></tr>`).join("")}
+      </table>`;
+  });
+  html += `</div>`;
+
+  // 3. Red Flags
+  html += `<div class="card"><strong>3. Red Flags</strong>
+    <p class="muted" style="margin-top:6px">${r.red_flags.totals.high} high, ${r.red_flags.totals.medium} medium, ${r.red_flags.totals.low} low severity across all companies.</p>`;
+  r.red_flags.companies.forEach(c => {
+    html += `<p style="margin-top:10px"><strong>${c.company_name}</strong> (${c.num_flags} flag${c.num_flags===1?'':'s'})</p>`;
+    if (!c.flags.length) html += `<p class="muted">No red flags detected.</p>`;
+    c.flags.forEach(f => {
+      const color = f.severity === "high" ? "#C0392B" : f.severity === "medium" ? "#D68910" : "#7D8A95";
+      html += `<p style="margin:4px 0;color:${color}">[${f.severity.toUpperCase()}] ${f.description}</p>`;
+    });
+  });
+  html += `</div>`;
+
+  // 4. Company Comparison
+  html += `<div class="card"><strong>4. Company Comparison</strong>`;
+  Object.entries(r.comparison.metrics).forEach(([name, comp]) => {
+    if (!comp.rows.length) return;
+    html += `<p style="margin-top:10px"><strong>${name.replace(/_/g," ")}</strong></p>
+      <table style="margin-top:4px">
+        <tr><th>#</th><th>Company</th><th>Value</th><th>Period</th></tr>
+        ${comp.rows.map(row => `<tr><td>${row.rank}</td><td>${row.company_name}</td><td>${row.value.toLocaleString()}</td><td>${row.period}</td></tr>`).join("")}
+      </table>`;
+  });
+  html += `</div>`;
+
+  // 5. Outlook
+  html += `<div class="card"><strong>5. Outlook</strong>`;
+  r.outlook.companies.forEach(o => {
+    html += `<p style="margin-top:10px"><strong>${o.company_name} — ${o.outlook_label}</strong></p>
+      <p class="muted" style="margin-top:2px">${o.explanation}</p>`;
+  });
+  html += `</div>`;
+
+  body.innerHTML = html;
+}
+
+init();
+</script>
+</body>
+</html>
